@@ -17,7 +17,7 @@ use mdbookshelf::config::Config;
 ///
 /// Run `mdbookshelf --help` for documentation.
 fn main() {
-    env_logger::from_env(Env::default().default_filter_or("info")).init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     color_backtrace::install();
 
     let matches = App::new("mdbookshelf")
@@ -26,7 +26,7 @@ fn main() {
         .author("Ramses Ladlani <rladlani@gmail.com>")
         .arg(
             Arg::with_name("working_dir")
-                .short("w")
+                .short('w')
                 .long("working_dir")
                 .value_name("WORKING_DIR")
                 .help("Sets a custom working directory where the book repositories will be cloned")
@@ -34,7 +34,7 @@ fn main() {
         )
         .arg(
             Arg::with_name("destination_dir")
-                .short("d")
+                .short('d')
                 .long("destination_dir")
                 .value_name("DESTINATION_DIR")
                 .help("Sets the destination directory")
@@ -42,7 +42,7 @@ fn main() {
         )
         .arg(
             Arg::with_name("templates_dir")
-                .short("t")
+                .short('t')
                 .long("templates_dir")
                 .value_name("TEMPLATES_DIR")
                 .help("Sets the templates directory (if not set, will generate manifest.json)")

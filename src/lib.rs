@@ -168,7 +168,7 @@ fn generate_epub(entry: &mut ManifestEntry, path: &Path, dest: &Path) -> Result<
 
     let ctx = RenderContext::new(md.root.clone(), md.book.clone(), md.config.clone(), dest);
 
-    mdbook_epub::generate(&ctx)?;
+    _ = mdbook_epub::generate(&ctx);
 
     let output_file = mdbook_epub::output_filename(dest, &ctx.config);
     info!("Generated epub into {}", output_file.display());
