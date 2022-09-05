@@ -96,7 +96,7 @@ fn main() {
 
     if let Err(e) = mdbookshelf::run(&config) {
         error!("Application error {:?}", e.backtrace());
-        e.iter_chain().for_each(|c| error!("  caused by: {}", c));
+        e.chain().for_each(|c| error!("  caused by: {}", c));
         process::exit(1);
     }
 }

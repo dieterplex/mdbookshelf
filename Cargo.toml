@@ -11,12 +11,11 @@ readme = "README.md"
 edition = "2018"
 
 [dependencies]
+anyhow = { version = "1.0", features = ["backtrace"] }
 chrono = "0.4.6"
 clap = "3.2"
 color-backtrace = "0.5"
 env_logger = "0.9.0"
-error-chain = "0.12.0"
-failure = "0.1.5"
 git2 = "0.15"
 log = "0.4.6"
 mdbook = "0.4.21"

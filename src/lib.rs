@@ -1,6 +1,4 @@
 extern crate chrono;
-#[macro_use]
-extern crate failure;
 extern crate git2;
 #[macro_use]
 extern crate log;
@@ -14,9 +12,9 @@ extern crate walkdir;
 
 pub mod config;
 
+use anyhow::{anyhow, Error, Result};
 use chrono::{TimeZone, Utc};
 use config::Config;
-use failure::Error;
 use git2::Repository;
 use mdbook::renderer::RenderContext;
 use mdbook::MDBook;
@@ -163,7 +161,7 @@ pub fn run(config: &Config) -> Result<Manifest, Error> {
 
 /// Generate an EPUB from `path` to `dest`. Also modify manifest `entry` accordingly.
 fn generate_epub(entry: &mut ManifestEntry, path: &Path, dest: &Path) -> Result<(), Error> {
-    let md = MDBook::load(path).map_err(|e| format_err!("Could not load mdbook: {}", e))?;
+    let md = MDBook::load(path).map_err(|e| anyhow!("Could not load mdbook: {}", e))?;
 
     let ctx = RenderContext::new(md.root.clone(), md.book.clone(), md.config.clone(), dest);
 

@@ -4,7 +4,7 @@
 
 #![deny(missing_docs)]
 
-use failure::Error;
+use anyhow::{anyhow, Error, Result};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::fs::File;
 use std::io::Read;
@@ -43,7 +43,7 @@ impl FromStr for Config {
 
     /// Load a `Config` from some string.
     fn from_str(src: &str) -> Result<Self, Self::Err> {
-        toml::from_str(src).map_err(|e| format_err!("{}", e))
+        toml::from_str(src).map_err(|e| anyhow!("{}", e))
     }
 }
 
