@@ -8,7 +8,6 @@ extern crate mdbook;
 extern crate mdbook_epub;
 extern crate serde;
 extern crate serde_json;
-#[macro_use]
 extern crate tera;
 extern crate url;
 extern crate walkdir;
@@ -25,6 +24,7 @@ use serde::Serialize;
 use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use tera::Context;
 use url::Url;
 use walkdir::WalkDir;
 
@@ -122,7 +122,7 @@ pub fn run(config: &Config) -> Result<Manifest, Error> {
     match config.templates_dir.as_ref() {
         Some(templates_dir) => {
             let templates_pattern = templates_dir.join("**/*");
-            let tera = compile_templates!(templates_pattern.to_str().unwrap());
+            let tera = tera::Tera::new(templates_pattern.to_str().unwrap())?;
 
             for entry in WalkDir::new(templates_dir)
                 .follow_links(true)
@@ -140,9 +140,8 @@ pub fn run(config: &Config) -> Result<Manifest, Error> {
                     output_path.display()
                 );
 
-                let page = tera
-                    .render(template_path, &manifest)
-                    .expect("Template error");
+                let ctx = Context::from_serialize(&manifest)?;
+                let page = tera.render(template_path, &ctx).expect("Template error");
                 let mut f = File::create(&output_path).expect("Could not create file");
 
                 f.write_all(page.as_bytes())

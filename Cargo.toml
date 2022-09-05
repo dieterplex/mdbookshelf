@@ -23,7 +23,7 @@ mdbook = "0.4.21"
 mdbook-epub = { git = "https://github.com/dieterplex/mdbook-epub" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.39"
-tera = "0.11"
+tera = "1"
 toml = "0.5.0"
 url = "2.2.2"
 walkdir = "2.2.7"
