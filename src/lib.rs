@@ -1,21 +1,10 @@
-extern crate chrono;
-extern crate git2;
-#[macro_use]
-extern crate log;
-extern crate mdbook;
-extern crate mdbook_epub;
-extern crate serde;
-extern crate serde_json;
-extern crate tera;
-extern crate url;
-extern crate walkdir;
-
 pub mod config;
 
 use anyhow::{anyhow, Error, Result};
 use chrono::{TimeZone, Utc};
 use config::Config;
 use git2::Repository;
+use log::info;
 use mdbook::renderer::RenderContext;
 use mdbook::MDBook;
 use serde::Serialize;
@@ -27,7 +16,7 @@ use url::Url;
 use walkdir::WalkDir;
 
 /// A manifest entry for the generated EPUB
-#[derive(Serialize)]
+#[derive(Default, Serialize)]
 pub struct ManifestEntry {
     /// The commit sha
     pub commit_sha: String,
@@ -45,20 +34,6 @@ pub struct ManifestEntry {
     pub url: String,
 }
 
-impl Default for ManifestEntry {
-    fn default() -> Self {
-        ManifestEntry {
-            commit_sha: String::default(),
-            epub_size: 0,
-            last_modified: String::default(),
-            path: PathBuf::default(),
-            repo_url: String::default(),
-            title: String::default(),
-            url: String::default(),
-        }
-    }
-}
-
 /// A Manifest contains the information about all EPUBs built
 /// during one invocation of `mdbookshelf.run()`.
 #[derive(Default, Serialize)]
@@ -70,11 +45,9 @@ pub struct Manifest {
 
 impl Manifest {
     pub fn new() -> Manifest {
-        let entries = Vec::new();
-        let timestamp = Utc::now().to_rfc3339();
         Manifest {
-            entries,
-            timestamp,
+            entries: Vec::new(),
+            timestamp: Utc::now().to_rfc3339(),
             title: String::default(),
         }
     }
@@ -88,79 +61,78 @@ pub fn run(config: &Config) -> Result<Manifest, Error> {
     manifest.title = config.title.clone();
 
     let dest = config.destination_dir.as_ref().unwrap();
+    let working_dir = config.working_dir.as_ref().unwrap();
 
     for repo_config in &config.book_repo_configs {
-        let mut manifest_entry = ManifestEntry::default();
+        let repo_url = repo_config.repo_url.to_owned();
 
-        let repo_url = &repo_config.repo_url;
-        let (_repo, mut repo_path) = clone_or_fetch_repo(
-            &mut manifest_entry,
-            repo_url,
-            config.working_dir.as_ref().unwrap().to_str().unwrap(),
-        )?;
+        let (mut repo_path, commit_sha, last_modified) =
+            clone_or_fetch_repo(repo_url.as_str(), working_dir)?;
 
         if let Some(repo_folder) = &repo_config.folder {
             repo_path = repo_path.join(repo_folder);
         }
 
-        generate_epub(&mut manifest_entry, repo_path.as_path(), dest)?;
+        let (book_title, path, epub_size) = generate_epub(repo_path.as_path(), dest)?;
+        let title = repo_config
+            .title
+            .to_owned()
+            .or(book_title)
+            .unwrap_or_default();
 
-        if let Some(title) = &repo_config.title {
-            manifest_entry.title = title.clone();
-        }
+        let entry = ManifestEntry {
+            commit_sha,
+            epub_size,
+            last_modified,
+            path,
+            repo_url,
+            title,
+            url: repo_config.url.to_owned(),
+        };
 
-        manifest_entry.repo_url = repo_config.repo_url.clone();
-        manifest_entry.url = repo_config.url.clone();
-
-        manifest.entries.push(manifest_entry);
+        manifest.entries.push(entry);
     }
 
-    let destination_dir = config.destination_dir.as_ref().unwrap();
+    if let Some(templates_dir) = config.templates_dir.as_ref() {
+        let templates_pattern = templates_dir.join("**/*");
+        let tera = tera::Tera::new(templates_pattern.to_str().unwrap())?;
 
-    match config.templates_dir.as_ref() {
-        Some(templates_dir) => {
-            let templates_pattern = templates_dir.join("**/*");
-            let tera = tera::Tera::new(templates_pattern.to_str().unwrap())?;
+        for entry in WalkDir::new(templates_dir)
+            .follow_links(true)
+            .into_iter()
+            .filter_map(|v| v.ok())
+            .filter(|e| !e.file_type().is_dir())
+        {
+            let template_path = entry.path().strip_prefix(templates_dir).unwrap();
+            let template_path = template_path.to_str().unwrap();
+            let output_path = dest.join(template_path);
 
-            for entry in WalkDir::new(templates_dir)
-                .follow_links(true)
-                .into_iter()
-                .filter_map(|v| v.ok())
-                .filter(|e| !e.file_type().is_dir())
-            {
-                let template_path = entry.path().strip_prefix(templates_dir).unwrap();
-                let template_path = template_path.to_str().unwrap();
-                let output_path = Path::new(&destination_dir).join(template_path);
+            info!(
+                "Rendering template {} to {}",
+                template_path,
+                output_path.display()
+            );
 
-                info!(
-                    "Rendering template {} to {}",
-                    template_path,
-                    output_path.display()
-                );
+            let ctx = Context::from_serialize(&manifest)?;
+            let page = tera.render(template_path, &ctx).expect("Template error");
+            let mut f = File::create(&output_path).expect("Could not create file");
 
-                let ctx = Context::from_serialize(&manifest)?;
-                let page = tera.render(template_path, &ctx).expect("Template error");
-                let mut f = File::create(&output_path).expect("Could not create file");
-
-                f.write_all(page.as_bytes())
-                    .expect("Error while writing file");
-            }
+            f.write_all(page.as_bytes())
+                .expect("Error while writing file");
         }
-        None => {
-            let manifest_path = Path::new(destination_dir).join("manifest.json");
-            info!("Writing manifest to {}", manifest_path.display());
+    } else {
+        let manifest_path = dest.join("manifest.json");
+        info!("Writing manifest to {}", manifest_path.display());
 
-            let f = File::create(&manifest_path).expect("Could not create manifest file");
-            serde_json::to_writer_pretty(f, &manifest)
-                .expect("Error while writing manifest to file");
-        }
+        let f = File::create(&manifest_path).expect("Could not create manifest file");
+        serde_json::to_writer_pretty(f, &manifest).expect("Error while writing manifest to file");
     }
 
     Ok(manifest)
 }
 
 /// Generate an EPUB from `path` to `dest`. Also modify manifest `entry` accordingly.
-fn generate_epub(entry: &mut ManifestEntry, path: &Path, dest: &Path) -> Result<(), Error> {
+fn generate_epub(path: &Path, dest: &Path) -> Result<(Option<String>, PathBuf, u64), Error> {
     let md = MDBook::load(path).map_err(|e| anyhow!("Could not load mdbook: {}", e))?;
 
     let ctx = RenderContext::new(md.root.clone(), md.book.clone(), md.config.clone(), dest);
@@ -172,30 +144,17 @@ fn generate_epub(entry: &mut ManifestEntry, path: &Path, dest: &Path) -> Result<
 
     let metadata = std::fs::metadata(&output_file)?;
     let epub_size = metadata.len();
-    entry.epub_size = epub_size;
-    let empty_path = Path::new("");
-    entry.path = mdbook_epub::output_filename(&empty_path, &ctx.config);
+    let output_path = mdbook_epub::output_filename(Path::new(""), &ctx.config);
+    let title = md.config.book.title;
 
-    if let Some(title) = md.config.book.title {
-        entry.title = title;
-    }
-
-    Ok(())
+    Ok((title, output_path, epub_size))
 }
 
-/// Clones or fetches the repo at `url` inside `working_dir`.
-fn clone_or_fetch_repo(
-    entry: &mut ManifestEntry,
-    url: &str,
-    working_dir: &str,
-) -> Result<(Repository, PathBuf), Error> {
+/// Clones or fetches the repo at `entry.repo_url` inside `working_dir`.
+fn clone_or_fetch_repo(url: &str, working_dir: &Path) -> Result<(PathBuf, String, String), Error> {
     let parsed_url = Url::parse(url)?;
-    let folder = parsed_url.path();
     // skip initial `/` in path
-    let mut it = folder.chars();
-    it.next();
-    let folder = it.as_str();
-    let mut dest = Path::new(working_dir).join(folder);
+    let mut dest = working_dir.join(&parsed_url.path()[1..]);
 
     // :TRICKY: can't use \ as path separator here because of improper native path handling in some parts of libgit2
     // see https://github.com/libgit2/libgit2/issues/3012
@@ -203,54 +162,41 @@ fn clone_or_fetch_repo(
         dest = PathBuf::from(dest.to_str().unwrap().replace('\\', "/"));
     }
 
-    let repo = match Repository::open(&dest) {
-        Ok(repo) => {
-            {
-                let remote = repo.find_remote("origin")?;
-                assert_eq!(
-                    remote.url().unwrap(),
-                    url,
-                    "Remote url for origin and requested url do not match"
-                );
-            }
+    let repo = if let Ok(repo) = Repository::open(&dest) {
+        repo.find_remote("origin").and_then(|mut remote| {
+            assert_eq!(
+                remote.url().unwrap(),
+                url,
+                "Remote url for origin and requested url do not match"
+            );
             info!("Found {:?}. Fetching {}", dest, url);
-            repo.find_remote("origin")?
-                .fetch(&["master"], None, None)
-                .unwrap();
-            repo
-        }
-        Err(_err) => {
-            // :TODO: shallow clone when supported by libgit2 (https://github.com/libgit2/libgit2/issues/3058)
-            info!("Cloning {} to {:?}", url, dest);
-            Repository::clone(url, &dest)?
-        }
+            remote.fetch(&["master"], None, None)
+        })?;
+        repo
+    } else {
+        // :TODO: shallow clone when supported by libgit2 (https://github.com/libgit2/libgit2/issues/3058)
+        info!("Cloning {} to {:?}", url, dest);
+        Repository::clone(url, &dest)?
     };
 
-    {
-        let head = repo.head()?;
-        let commit = head.peel_to_commit()?;
-        let commit_sha = commit.id();
-        let last_modified = Utc.timestamp(commit.time().seconds(), 0);
+    let commit = repo.head()?.peel_to_commit()?;
+    let commit_sha = commit.id().to_string();
+    let last_modified = Utc.timestamp(commit.time().seconds(), 0).to_rfc3339();
 
-        entry.commit_sha = commit_sha.to_string();
-        entry.last_modified = last_modified.to_rfc3339();
-    }
-
-    Ok((repo, dest))
+    Ok((dest, commit_sha, last_modified))
 }
 
 #[test]
 fn test_generate_epub() {
-    let mut entry = ManifestEntry::default();
     let path = Path::new("tests").join("dummy");
     let dest = Path::new("tests").join("book");
 
-    generate_epub(&mut entry, path.as_path(), dest.as_path()).unwrap();
+    let (title, path, size) = generate_epub(path.as_path(), dest.as_path()).unwrap();
 
-    assert!(entry.epub_size > 0, "Epub size should be bigger than 0");
-    assert_eq!(entry.title, "Hello Rust", "Title doesn't match");
+    assert!(size > 0, "Epub size should be bigger than 0");
+    assert_eq!(title.unwrap(), "Hello Rust", "Title doesn't match");
     assert_eq!(
-        entry.path,
+        path,
         Path::new("Hello Rust.epub"),
         "Manifest entry path should be filled"
     );

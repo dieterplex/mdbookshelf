@@ -1,15 +1,9 @@
-#[macro_use]
-extern crate clap;
-extern crate env_logger;
-#[macro_use]
-extern crate log;
-
-use clap::{App, Arg};
-use env_logger::Env;
 use std::path::{Path, PathBuf};
 use std::process;
 
-use mdbookshelf;
+use clap::{crate_version, App, Arg};
+use env_logger::Env;
+use log::{error, info};
 use mdbookshelf::config::Config;
 
 /// `mdbookshelf` binary reads config from `bookshelf.toml` file and allows

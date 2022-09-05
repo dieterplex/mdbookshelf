@@ -14,7 +14,7 @@ use toml::{self, Value};
 
 /// The overall configuration object for MDBookshelf, essentially an in-memory
 /// representation of `bookshelf.toml`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Config {
     /// An array of BookRepoConfig
     pub book_repo_configs: Vec<BookRepoConfig>,
@@ -47,17 +47,6 @@ impl FromStr for Config {
     }
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Config {
-            book_repo_configs: Vec::new(),
-            destination_dir: None,
-            templates_dir: None,
-            title: String::default(),
-            working_dir: None,
-        }
-    }
-}
 impl<'de> Deserialize<'de> for Config {
     fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
         let raw = Value::deserialize(de)?;
@@ -104,7 +93,7 @@ impl<'de> Deserialize<'de> for Config {
 }
 
 /// The configuration for a single book
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
 pub struct BookRepoConfig {
     /// The book's title.  
@@ -116,17 +105,6 @@ pub struct BookRepoConfig {
     pub repo_url: String,
     /// The online rendered book url.
     pub url: String,
-}
-
-impl Default for BookRepoConfig {
-    fn default() -> Self {
-        BookRepoConfig {
-            title: None,
-            folder: None,
-            repo_url: String::default(),
-            url: String::default(),
-        }
-    }
 }
 
 #[cfg(test)]
