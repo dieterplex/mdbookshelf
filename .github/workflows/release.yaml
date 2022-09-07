@@ -1,0 +1,208 @@
+---
+# Based on [Release Workflow For Rust](https://github.com/hendrikmaus/rust-workflows)
+#
+name: Release
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  # replace with your binary name as it appears in target/*/release
+  PROJ_NAME: mdbookshelf
+
+  ## Options for containerization
+
+  # binary of which build target to copy into the container
+  #   the step will download the artifact built by the `binaries` job
+  #   it will try and download `$PROJ_NAME-$IMAGE_BINARY_TARGET`
+  IMAGE_BINARY_TARGET: x86_64-unknown-linux-musl
+
+  # container registry to use
+  #   if not using ghcr.io, you'll need to adapt the step
+  IMAGE_REGISTRY: ghcr.io
+
+  # image name to use
+  #   `$IMAGE_REGISTRY/$IMAGE_NAME:$TAG`
+  #   where `$TAG` will be derived from `GITHUB_REF`
+  #   e.g. `refs/tags/v1.0.0 -> v1.0.0`
+  IMAGE_NAME: ${{ github.repository }}
+
+  ## Misc. options
+
+  CARGO_TERM_COLOR: always
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  binaries:
+    name: Binaries
+    strategy:
+      matrix:
+        include:
+          # Supported `cross` targets:
+          #   https://github.com/rust-embedded/cross#supported-targets
+
+          # Linux targets
+          #- { target: x86_64-unknown-linux-gnu, os: ubuntu-latest, cross: true }
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-latest, cross: true }
+          #- { target: aarch64-unknown-linux-musl, os: ubuntu-latest, cross: true }
+          #- { target: i686-unknown-linux-musl, os: ubuntu-latest, cross: true }
+          #- { target: arm-unknown-linux-musleabihf, os: ubuntu-latest, cross: true }
+
+          # macOS targets
+          #- { target: x86_64-apple-darwin, os: macOS-latest, cross: false }
+          #- { target: aarch64-apple-darwin, os: macOS-latest, cross: false }
+
+          # Windows
+          #- { target: aarch64-pc-windows-msvc, os: windows-latest, cross: false }
+          - { target: x86_64-pc-windows-msvc, os: windows-latest, cross: false }
+          #- { target: i686-pc-windows-msvc, os: windows-latest, cross: false }
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@a12a3943b4bdde767164f792f33f40b04645d846
+
+      - uses: actions-rs/toolchain@568dc894a7f9e32ffd9bb7d7a6cebb784cdaa2b0
+        with:
+          toolchain: stable
+          override: true
+          profile: minimal
+          target: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Compile
+        uses: actions-rs/cargo@4ff6ec2846f6e7217c1a9b0b503506665f134c4b
+        with:
+          command: build
+          args: --release --target ${{ matrix.target }}
+          use-cross: ${{ matrix.cross }}
+
+      - name: Compress
+        run: |
+          cd target/${{ matrix.target }}/release
+          case "${RUNNER_OS}" in
+            Linux)
+              tar czvf "${GITHUB_WORKSPACE}/${PROJ_NAME}-${{ matrix.target }}.tar.gz" "${PROJ_NAME}"
+              ;;
+            macOS)
+              # gh docs say gtar is aliased to tar, but it failed
+              gtar czvf "${GITHUB_WORKSPACE}/${PROJ_NAME}-${{ matrix.target }}.tar.gz" "${PROJ_NAME}"
+              ;;
+            Windows)
+              7z a "${GITHUB_WORKSPACE}/${PROJ_NAME}-${{ matrix.target }}.zip" "${PROJ_NAME}.exe"
+              ;;
+            *)
+              echo "[ERROR] unsupported OS: ${RUNNER_OS}"
+              exit 1
+          esac
+          cd -
+
+      - name: Upload Unix
+        if: runner.os != 'Windows'
+        uses: actions/upload-artifact@6673cd052c4cd6fcf4b4e6e60ea986c889389535
+        with:
+          name: ${{ env.PROJ_NAME }}-${{ matrix.target }}.tar.gz
+          path: ${{ env.PROJ_NAME }}-${{ matrix.target }}.tar.gz
+
+      - name: Upload Windows
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@6673cd052c4cd6fcf4b4e6e60ea986c889389535
+        with:
+          name: ${{ env.PROJ_NAME }}-${{ matrix.target }}.zip
+          path: ${{ env.PROJ_NAME }}-${{ matrix.target }}.zip
+
+  release:
+    name: GitHub Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: binaries
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@a12a3943b4bdde767164f792f33f40b04645d846
+        with:
+          fetch-depth: 0
+
+      - name: Binaries
+        uses: actions/download-artifact@fb598a63ae348fa914e94cd0ff38f362e927b741
+
+      - name: Checksums
+        run: |
+          for file in "${PROJ_NAME}"-*/"${PROJ_NAME}"-*; do
+            openssl dgst -sha256 -r "${file}" \
+              | awk '{print $1}' > "${file}.sha256"
+          done
+
+      - name: Publish
+        uses: softprops/action-gh-release@4716bde57e0fcda6ce83002e2469b8a90e560573
+        with:
+          files: ${{ env.PROJ_NAME }}-*/${{ env.PROJ_NAME }}-*
+          generate_release_notes: true
+
+  containerize:
+    name: Containerize
+    needs: binaries
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@a12a3943b4bdde767164f792f33f40b04645d846
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@dd4fa0671be5250ee6f50aedf4cb05514abda2c7
+        with:
+          registry: ${{ env.IMAGE_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Binaries
+        uses: actions/download-artifact@fb598a63ae348fa914e94cd0ff38f362e927b741
+        with:
+          name: "${{ env.PROJ_NAME }}-${{ env.IMAGE_BINARY_TARGET }}.tar.gz"
+          path: "target/${{ env.IMAGE_BINARY_TARGET }}/release/"
+
+      - name: Build & Push
+        env:
+          DOCKER_BUILDKIT: 'true'
+        run: |
+          echo "::group::Extract binary"
+          tar -C "target/${IMAGE_BINARY_TARGET}/release" \
+            -xvf "target/${IMAGE_BINARY_TARGET}/release/${PROJ_NAME}-${IMAGE_BINARY_TARGET}.tar.gz"
+          echo "::endgroup::"
+          
+          echo "::group::Determine image tag"
+          tag=""
+          if [[ "${GITHUB_REF}" == *"refs/tags"* ]]; then
+            tag="${IMAGE_REGISTRY}/${IMAGE_NAME}:${GITHUB_REF/refs\/tags\//}"
+          else
+            tag="${IMAGE_REGISTRY}/${IMAGE_NAME}:${GITHUB_REF/refs\/heads\//}"
+          fi
+          
+          echo "[INFO] tag is: '${tag}'"
+          echo "::endgroup::"
+          
+          echo "::group::Container preflight"
+          # if the image can be pulled, we do not need to build it
+          # usually, container images in this scope should be small enough for this
+          # to not be too expensive. feel free to open a pr with a better solution
+          if docker pull "${tag}" &>/dev/null; then
+            echo "[INFO] found ${tag}, skipping build"
+            exit 0
+          fi
+          echo "::endgroup::"
+          
+          echo "::group::Container build"
+          docker build \
+            --tag "${tag}" \
+            --build-arg bin="${PROJ_NAME}" \
+            --build-arg bin_path="target/${IMAGE_BINARY_TARGET}/release/${PROJ_NAME}" \
+            --file "${GITHUB_WORKSPACE}/Dockerfile" \
+            "${GITHUB_WORKSPACE}"
+          echo "::endgroup::"
+          
+          echo "::group::Container push"
+          docker push "${tag}"
+          echo "::endgroup::"
