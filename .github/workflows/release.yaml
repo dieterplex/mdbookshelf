@@ -16,7 +16,7 @@ env:
   # binary of which build target to copy into the container
   #   the step will download the artifact built by the `binaries` job
   #   it will try and download `$PROJ_NAME-$IMAGE_BINARY_TARGET`
-  IMAGE_BINARY_TARGET: x86_64-unknown-linux-musl
+  IMAGE_BINARY_TARGET: x86_64-unknown-linux-gnu
 
   # container registry to use
   #   if not using ghcr.io, you'll need to adapt the step
@@ -46,7 +46,7 @@ jobs:
           #   https://github.com/rust-embedded/cross#supported-targets
 
           # Linux targets
-          #- { target: x86_64-unknown-linux-gnu, os: ubuntu-latest, cross: true }
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest, cross: true }
           - { target: x86_64-unknown-linux-musl, os: ubuntu-latest, cross: true }
           #- { target: aarch64-unknown-linux-musl, os: ubuntu-latest, cross: true }
           #- { target: i686-unknown-linux-musl, os: ubuntu-latest, cross: true }
@@ -64,9 +64,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
-        uses: actions/checkout@a12a3943b4bdde767164f792f33f40b04645d846
+        uses: actions/checkout@v3
 
-      - uses: actions-rs/toolchain@568dc894a7f9e32ffd9bb7d7a6cebb784cdaa2b0
+      - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           override: true
@@ -76,7 +76,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Compile
-        uses: actions-rs/cargo@4ff6ec2846f6e7217c1a9b0b503506665f134c4b
+        uses: actions-rs/cargo@v1
         with:
           command: build
           args: --release --target ${{ matrix.target }}
@@ -104,14 +104,14 @@ jobs:
 
       - name: Upload Unix
         if: runner.os != 'Windows'
-        uses: actions/upload-artifact@6673cd052c4cd6fcf4b4e6e60ea986c889389535
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ env.PROJ_NAME }}-${{ matrix.target }}.tar.gz
           path: ${{ env.PROJ_NAME }}-${{ matrix.target }}.tar.gz
 
       - name: Upload Windows
         if: runner.os == 'Windows'
-        uses: actions/upload-artifact@6673cd052c4cd6fcf4b4e6e60ea986c889389535
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ env.PROJ_NAME }}-${{ matrix.target }}.zip
           path: ${{ env.PROJ_NAME }}-${{ matrix.target }}.zip
@@ -123,12 +123,12 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - name: Checkout
-        uses: actions/checkout@a12a3943b4bdde767164f792f33f40b04645d846
+        uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
       - name: Binaries
-        uses: actions/download-artifact@fb598a63ae348fa914e94cd0ff38f362e927b741
+        uses: actions/download-artifact@v3
 
       - name: Checksums
         run: |
@@ -138,7 +138,7 @@ jobs:
           done
 
       - name: Publish
-        uses: softprops/action-gh-release@4716bde57e0fcda6ce83002e2469b8a90e560573
+        uses: softprops/action-gh-release@v1
         with:
           files: ${{ env.PROJ_NAME }}-*/${{ env.PROJ_NAME }}-*
           generate_release_notes: true
@@ -149,17 +149,17 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - name: Checkout
-        uses: actions/checkout@a12a3943b4bdde767164f792f33f40b04645d846
+        uses: actions/checkout@v3
 
       - name: Log in to the Container registry
-        uses: docker/login-action@dd4fa0671be5250ee6f50aedf4cb05514abda2c7
+        uses: docker/login-action@v2
         with:
           registry: ${{ env.IMAGE_REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Binaries
-        uses: actions/download-artifact@fb598a63ae348fa914e94cd0ff38f362e927b741
+        uses: actions/download-artifact@v3
         with:
           name: "${{ env.PROJ_NAME }}-${{ env.IMAGE_BINARY_TARGET }}.tar.gz"
           path: "target/${{ env.IMAGE_BINARY_TARGET }}/release/"
