@@ -1,6 +1,6 @@
 [package]
 name = "mdbookshelf"
-version = "0.1.3"
+version = "0.2.0"
 authors = ["Ramses Ladlani <rladlani@gmail.com>"]
 description = "Create epubs from a list of mdbook repositories"
 documentation = "https://docs.rs/mdbookshelf/"
