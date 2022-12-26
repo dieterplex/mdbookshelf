@@ -4,13 +4,16 @@
 
 #![deny(missing_docs)]
 
+use std::{
+    fs::File,
+    io::Read,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
+
 use anyhow::{anyhow, Error, Result};
 use serde::{Deserialize, Deserializer, Serialize};
-use std::fs::File;
-use std::io::Read;
-use std::path::{Path, PathBuf};
-use std::str::FromStr;
-use toml::{self, Value};
+use toml::{value::Table, Value};
 
 /// The overall configuration object for MDBookshelf, essentially an in-memory
 /// representation of `bookshelf.toml`.
@@ -93,10 +96,10 @@ impl<'de> Deserialize<'de> for Config {
 }
 
 /// The configuration for a single book
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
 pub struct BookRepoConfig {
-    /// The book's title.  
+    /// The book's title.
     /// If set, overwrites the value read from the book itself when generating the manifest.
     pub title: Option<String>,
     /// The book root directory.
@@ -105,10 +108,19 @@ pub struct BookRepoConfig {
     pub repo_url: String,
     /// The online rendered book url.
     pub url: String,
+    /// Dynamic mdBook config.
+    /// Use special environment variables to change config while loading mdbook
+    pub env_var: Option<Table>,
 }
+
+impl Eq for BookRepoConfig {}
 
 #[cfg(test)]
 mod tests {
+    use std::iter::FromIterator;
+
+    use toml::value::Table;
+
     use super::*;
 
     const COMPLEX_CONFIG: &str = r#"
@@ -124,6 +136,13 @@ mod tests {
         [[book]]
         repo-url = "git_source2"
         url = "source2"
+
+        [book.env-var]
+        MDBOOK_PREPROCESSOR__NOCOMMENT = """\
+        multiline = ""\
+        content = 42\
+        """
+        MDBOOK_PREPROCESSOR__NOP = ""
         "#;
 
     #[test]
@@ -136,10 +155,18 @@ mod tests {
                 folder: Some(PathBuf::from("./foo")),
                 repo_url: String::from("git_source"),
                 url: String::from("source"),
+                ..Default::default()
             },
             BookRepoConfig {
                 repo_url: String::from("git_source2"),
                 url: String::from("source2"),
+                env_var: Some(Table::from_iter([
+                    (
+                        String::from("MDBOOK_PREPROCESSOR__NOCOMMENT"),
+                        Value::from("multiline = \"\"content = 42"),
+                    ),
+                    (String::from("MDBOOK_PREPROCESSOR__NOP"), Value::from("")),
+                ])),
                 ..Default::default()
             },
         ];
