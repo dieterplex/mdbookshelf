@@ -14,7 +14,7 @@ use config::Config;
 use git::GitOp;
 #[double]
 use git::Repo;
-use log::info;
+use log::{debug, info, warn};
 use mockall_double::double;
 use serde::Serialize;
 use std::fs::File;
@@ -76,7 +76,7 @@ pub fn run(config: &Config) -> Result<Manifest> {
 
 fn check_or_create_dir(dest: &Path) -> io::Result<()> {
     if !dest.exists() {
-        log::debug!("Creating destination directory ({:?})", dest);
+        debug!("Creating destination directory ({:?})", dest);
         std::fs::create_dir_all(dest)
     } else {
         core::result::Result::Ok(())
@@ -89,7 +89,7 @@ fn generate_books(
     dest: &Path,
 ) -> Option<Vec<ManifestEntry>> {
     if book_repo_configs.is_empty() {
-        log::warn!("No books to generate");
+        warn!("No books to generate");
         return None;
     }
     let mut shelf = Vec::with_capacity(book_repo_configs.len());
@@ -103,7 +103,14 @@ fn generate_books(
             repo_path = repo_path.join(repo_folder);
         }
 
-        let (book_title, path, epub_size) = Book::generate_epub(repo_path.as_path(), dest).ok()?;
+        let vars: Vec<(String, Option<String>)> = if let Some(mapping) = &repo_config.env_var {
+            let to_owned_kv = |(k, v): (&String, &toml::Value)| (k.to_owned(), Some(v.to_string()));
+            mapping.iter().map(to_owned_kv).collect()
+        } else {
+            Vec::new()
+        };
+        let (book_title, path, epub_size) =
+            Book::generate_epub(repo_path.as_path(), vars, dest).ok()?;
         let title = repo_config
             .title
             .to_owned()

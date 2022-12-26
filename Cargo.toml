@@ -23,6 +23,7 @@ mdbook-epub = { git = "https://github.com/dieterplex/mdbook-epub", rev = "c92696
 mockall_double = "0.3.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+temp-env = "0.3"
 tera = "1"
 toml = "0.5.0"
 url = "2.3"
