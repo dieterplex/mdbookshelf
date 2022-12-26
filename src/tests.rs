@@ -73,7 +73,7 @@ fn test_run() {
     ctx_book
         .expect()
         .once()
-        .return_once(move |_path, _dest| Ok(book_result));
+        .return_once(move |_path, _vars, _dest| Ok(book_result));
 
     let got = super::run(&config).unwrap();
 
