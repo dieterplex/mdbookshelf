@@ -1,8 +1,7 @@
-use mdbookshelf;
 use mdbookshelf::config::Config;
 use std::str::FromStr;
 
-const CONFIG: &'static str = r#"
+const CONFIG: &str = r#"
     title = "My eBookshelf"
     destination-dir = "tests/out"
     working-dir = "tests/repos"
