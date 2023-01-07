@@ -13,13 +13,13 @@ edition = "2018"
 [dependencies]
 anyhow = { version = "1.0", features = ["backtrace"] }
 chrono = "0.4.6"
-clap = "3.2"
+clap = "4.0"
 color-backtrace = "0.5"
-env_logger = "0.9"
+env_logger = "0.10"
 git2 = "0.15"
 log = "0.4"
-mdbook = "0.4.21"
-mdbook-epub = { git = "https://github.com/dieterplex/mdbook-epub", rev = "76416d71" }
+mdbook = "0.4"
+mdbook-epub = { git = "https://github.com/dieterplex/mdbook-epub", rev = "81b1e718" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tera = "1"
