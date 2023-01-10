@@ -2,8 +2,12 @@ use anyhow::{anyhow, Result};
 use mdbook::renderer::RenderContext;
 use std::path::{Path, PathBuf};
 
+#[cfg(test)]
+use mockall::automock;
+
 pub(crate) struct BookOp;
 
+#[cfg_attr(test, automock)]
 impl BookOp {
     pub(crate) fn load(book_root: &Path) -> Result<mdbook::MDBook> {
         mdbook::MDBook::load(book_root)
@@ -15,6 +19,7 @@ impl BookOp {
 
 pub(crate) struct Book;
 
+#[cfg_attr(test, automock)]
 impl Book {
     /// Generate an EPUB from `path` to `dest`. Also modify manifest `entry` accordingly.
     pub(crate) fn generate_epub(
