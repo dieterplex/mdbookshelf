@@ -4,7 +4,7 @@ pub mod config;
 #[allow(dead_code)]
 mod git;
 
-use anyhow::Result;
+use anyhow::{anyhow, Ok, Result};
 #[double]
 use book::Book;
 use chrono::Utc;
@@ -15,8 +15,8 @@ use log::info;
 use mockall_double::double;
 use serde::Serialize;
 use std::fs::File;
-use std::io::Write;
-use std::path::PathBuf;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 use tera::Context;
 use walkdir::WalkDir;
 
@@ -48,37 +48,59 @@ pub struct Manifest {
     pub title: String,
 }
 
-impl Manifest {
-    pub fn new() -> Manifest {
-        Manifest {
-            entries: Vec::new(),
-            timestamp: Utc::now().to_rfc3339(),
-            title: String::default(),
-        }
-    }
-}
-
 /// Generates all EPUBs defined in `config` and returns a `Manifest` containing
 /// information about all generated books.
 pub fn run(config: &Config) -> Result<Manifest> {
-    let mut manifest = Manifest::new();
-    manifest.entries.reserve(config.book_repo_configs.len());
-    manifest.title = config.title.clone();
-
     let dest = config.destination_dir.as_ref().unwrap();
     let working_dir = config.working_dir.as_ref().unwrap();
 
-    for repo_config in &config.book_repo_configs {
+    check_or_create_dir(dest.as_path())?;
+    let entries = generate_books(&config.book_repo_configs, working_dir, dest)
+        .ok_or_else(|| anyhow!("Something bad happened."))?;
+    let manifest = Manifest {
+        entries,
+        timestamp: Utc::now().to_rfc3339(),
+        title: config.title.to_owned(),
+    };
+
+    if let Some(ref templates) = config.templates_dir {
+        render_template(templates, dest, &manifest)?;
+    } else {
+        render_json(dest, &manifest)?;
+    }
+    Ok(manifest)
+}
+
+fn check_or_create_dir(dest: &Path) -> io::Result<()> {
+    if !dest.exists() {
+        log::debug!("Creating destination directory ({:?})", dest);
+        std::fs::create_dir_all(dest)
+    } else {
+        core::result::Result::Ok(())
+    }
+}
+
+fn generate_books(
+    book_repo_configs: &Vec<config::BookRepoConfig>,
+    working_dir: &Path,
+    dest: &Path,
+) -> Option<Vec<ManifestEntry>> {
+    if book_repo_configs.is_empty() {
+        log::warn!("No books to generate");
+        return None;
+    }
+    let mut shelf = Vec::with_capacity(book_repo_configs.len());
+    for repo_config in book_repo_configs {
         let repo_url = repo_config.repo_url.to_owned();
 
         let (mut repo_path, commit_sha, last_modified) =
-            Repo::clone_or_fetch_repo(repo_url.as_str(), working_dir)?;
+            Repo::clone_or_fetch_repo(repo_url.as_str(), working_dir).ok()?;
 
         if let Some(repo_folder) = &repo_config.folder {
             repo_path = repo_path.join(repo_folder);
         }
 
-        let (book_title, path, epub_size) = Book::generate_epub(repo_path.as_path(), dest)?;
+        let (book_title, path, epub_size) = Book::generate_epub(repo_path.as_path(), dest).ok()?;
         let title = repo_config
             .title
             .to_owned()
@@ -95,45 +117,49 @@ pub fn run(config: &Config) -> Result<Manifest> {
             url: repo_config.url.to_owned(),
         };
 
-        manifest.entries.push(entry);
+        shelf.push(entry);
     }
+    Some(shelf)
+}
 
-    if let Some(templates_dir) = config.templates_dir.as_ref() {
-        let templates_pattern = templates_dir.join("**/*");
-        let tera = tera::Tera::new(templates_pattern.to_str().unwrap())?;
+fn render_template(templates_dir: &Path, dest: &Path, manifest: &Manifest) -> Result<()> {
+    // let templates_dir = config.templates_dir.as_ref().unwrap();
+    let templates_pattern = templates_dir.join("**/*");
+    let tera = tera::Tera::new(templates_pattern.to_str().unwrap())?;
 
-        for entry in WalkDir::new(templates_dir)
-            .follow_links(true)
-            .into_iter()
-            .filter_map(|v| v.ok())
-            .filter(|e| !e.file_type().is_dir())
-        {
-            let template_path = entry.path().strip_prefix(templates_dir).unwrap();
-            let template_path = template_path.to_str().unwrap();
-            let output_path = dest.join(template_path);
+    for entry in WalkDir::new(templates_dir)
+        .follow_links(true)
+        .into_iter()
+        .filter_map(|v| v.ok())
+        .filter(|e| !e.file_type().is_dir())
+    {
+        let template_path = entry.path().strip_prefix(templates_dir).unwrap();
+        let template_path = template_path.to_str().unwrap();
+        let output_path = dest.join(template_path);
 
-            info!(
-                "Rendering template {} to {}",
-                template_path,
-                output_path.display()
-            );
+        info!(
+            "Rendering template {} to {}",
+            template_path,
+            output_path.display()
+        );
 
-            let ctx = Context::from_serialize(&manifest)?;
-            let page = tera.render(template_path, &ctx).expect("Template error");
-            let mut f = File::create(&output_path).expect("Could not create file");
+        let ctx = Context::from_serialize(manifest)?;
+        let page = tera.render(template_path, &ctx).expect("Template error");
+        let mut f = File::create(&output_path).expect("Could not create file");
 
-            f.write_all(page.as_bytes())
-                .expect("Error while writing file");
-        }
-    } else {
-        let manifest_path = dest.join("manifest.json");
-        info!("Writing manifest to {}", manifest_path.display());
-
-        let f = File::create(&manifest_path).expect("Could not create manifest file");
-        serde_json::to_writer_pretty(f, &manifest).expect("Error while writing manifest to file");
+        f.write_all(page.as_bytes())
+            .expect("Error while writing file");
     }
+    Ok(())
+}
 
-    Ok(manifest)
+fn render_json(dest: &Path, manifest: &Manifest) -> Result<PathBuf> {
+    let manifest_path = dest.join("manifest.json");
+    info!("Writing manifest to {}", manifest_path.display());
+
+    let f = File::create(&manifest_path).expect("Could not create manifest file");
+    serde_json::to_writer_pretty(f, &manifest).expect("Error while writing manifest to file");
+    Ok(manifest_path)
 }
 
 #[test]
