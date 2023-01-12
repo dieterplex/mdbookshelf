@@ -111,7 +111,7 @@ pub struct BookRepoConfig {
 mod tests {
     use super::*;
 
-    const COMPLEX_CONFIG: &'static str = r#"
+    const COMPLEX_CONFIG: &str = r#"
         title = "My bookshelf"
         templates-dir = "templates/"
 
@@ -136,7 +136,6 @@ mod tests {
                 folder: Some(PathBuf::from("./foo")),
                 repo_url: String::from("git_source"),
                 url: String::from("source"),
-                ..Default::default()
             },
             BookRepoConfig {
                 repo_url: String::from("git_source2"),
