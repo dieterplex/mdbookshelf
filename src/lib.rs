@@ -1,16 +1,16 @@
+mod book;
 pub mod config;
 mod git;
 
-use anyhow::{anyhow, Error, Result};
+use anyhow::{Error, Result};
+use book::Book;
 use chrono::Utc;
 use config::Config;
 use log::info;
-use mdbook::renderer::RenderContext;
-use mdbook::MDBook;
 use serde::Serialize;
 use std::fs::File;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tera::Context;
 use walkdir::WalkDir;
 
@@ -72,7 +72,7 @@ pub fn run(config: &Config) -> Result<Manifest, Error> {
             repo_path = repo_path.join(repo_folder);
         }
 
-        let (book_title, path, epub_size) = generate_epub(repo_path.as_path(), dest)?;
+        let (book_title, path, epub_size) = Book::generate_epub(repo_path.as_path(), dest)?;
         let title = repo_config
             .title
             .to_owned()
@@ -128,39 +128,4 @@ pub fn run(config: &Config) -> Result<Manifest, Error> {
     }
 
     Ok(manifest)
-}
-
-/// Generate an EPUB from `path` to `dest`. Also modify manifest `entry` accordingly.
-fn generate_epub(path: &Path, dest: &Path) -> Result<(Option<String>, PathBuf, u64), Error> {
-    let md = MDBook::load(path).map_err(|e| anyhow!("Could not load mdbook: {}", e))?;
-
-    let ctx = RenderContext::new(md.root.clone(), md.book.clone(), md.config.clone(), dest);
-
-    _ = mdbook_epub::generate(&ctx);
-
-    let output_file = mdbook_epub::output_filename(dest, &ctx.config);
-    info!("Generated epub into {}", output_file.display());
-
-    let metadata = std::fs::metadata(&output_file)?;
-    let epub_size = metadata.len();
-    let output_path = mdbook_epub::output_filename(Path::new(""), &ctx.config);
-    let title = md.config.book.title;
-
-    Ok((title, output_path, epub_size))
-}
-
-#[test]
-fn test_generate_epub() {
-    let path = Path::new("tests").join("dummy");
-    let dest = Path::new("tests").join("book");
-
-    let (title, path, size) = generate_epub(path.as_path(), dest.as_path()).unwrap();
-
-    assert!(size > 0, "Epub size should be bigger than 0");
-    assert_eq!(title.unwrap(), "Hello Rust", "Title doesn't match");
-    assert_eq!(
-        path,
-        Path::new("Hello Rust.epub"),
-        "Manifest entry path should be filled"
-    );
 }
