@@ -2,16 +2,15 @@ use std::path::{Path, PathBuf};
 
 use chrono::{TimeZone, Utc};
 use git2::Repository;
-use log::info;
+use log::{info, trace};
 #[cfg(test)]
 use mockall::automock;
-use mockall_double::double;
 use url::Url;
 
-struct GitOp;
+pub(crate) struct Repo;
 
 #[cfg_attr(test, automock)]
-impl GitOp {
+impl GitOp for Repo {
     fn open(path: PathBuf) -> Result<Repository, git2::Error> {
         Repository::open(path)
     }
@@ -20,24 +19,18 @@ impl GitOp {
     }
 }
 
-pub(crate) struct Repo;
-
-#[cfg_attr(test, automock)]
-impl Repo {
+pub(crate) trait GitOp {
     /// Clones or fetches the repo at `entry.repo_url` inside `working_dir`.
-    pub(crate) fn clone_or_fetch_repo(
+    fn clone_or_fetch_repo(
         url: &str,
         working_dir: &Path,
     ) -> anyhow::Result<(PathBuf, String, String)> {
-        #[double]
-        use GitOp as Git;
-
         let repo_path = if let Ok(parsed_url) = Url::parse(url) {
-            log::trace!("Repo url parsed: {}", parsed_url);
+            trace!("Repo url parsed: {}", parsed_url);
             // skip initial `/` in path
             parsed_url.path()[1..].to_owned()
         } else {
-            log::trace!("Local repo path?: {}", url);
+            trace!("Local repo path?: {}", url);
             // local repo?
             url.to_owned()
         };
@@ -49,7 +42,7 @@ impl Repo {
             dest = PathBuf::from(dest.to_str().unwrap().replace('\\', "/"));
         }
 
-        let repo = if let Ok(repo) = Git::open(dest.clone()) {
+        let repo = if let Ok(repo) = Self::open(dest.clone()) {
             repo.find_remote("origin").and_then(|mut remote| {
                 assert_eq!(
                     remote.url().unwrap(),
@@ -62,8 +55,8 @@ impl Repo {
             repo
         } else {
             // :TODO: shallow clone when supported by libgit2 (https://github.com/libgit2/libgit2/issues/3058)
-            info!("Cloning {} to {:?}", url, &dest);
-            Git::clone(url, dest.clone())?
+            info!("Cloning {:?} to {:?}", url, &dest);
+            Self::clone(url, dest.clone())?
         };
 
         let commit = repo.head()?.peel_to_commit()?;
@@ -72,55 +65,49 @@ impl Repo {
 
         Ok((dest, commit_sha, last_modified))
     }
+
+    fn open(path: PathBuf) -> Result<Repository, git2::Error>;
+    fn clone(url: &str, into: PathBuf) -> Result<Repository, git2::Error>;
 }
 
 #[cfg(test)]
-pub(crate) mod test {
+mod tests {
     use git2::Repository;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use tempfile::TempDir;
 
+    use super::GitOp;
+
     #[test]
-    fn test_clone_repo() {
-        let src = "http://git.repo/NOSRC";
-        let parsed_src = url::Url::parse(src).unwrap().path()[1..].to_owned();
+    fn test_clone_remote_repo() {
+        let url = "http://git.repo.com/owner/NOSRC";
+        let parsed_url = url::Url::parse(url).unwrap().path()[1..].to_owned();
         let dest = TempDir::new().unwrap();
-        let expect_dest = dest.path().join(parsed_src);
+        let expect_repo_dir = dest.path().join(parsed_url);
 
-        // Coundn't open dest dir as a repo and ..
-        let ctx_open = super::MockGitOp::open_context();
-        ctx_open
-            .expect()
-            .once()
-            .returning(|_| Err(git2::Error::from_str("YOU SHALL NOT OPEN")));
-        // Init a repo on dest dirs
-        let ctx_clone = super::MockGitOp::clone_context();
-        ctx_clone
-            .expect()
-            .once()
-            .returning(|_, dest| Ok(repo_init(&dest)));
-
-        let (got_dest, _sha, _date) = super::Repo::clone_or_fetch_repo(src, dest.path()).unwrap();
-        assert_eq!(got_dest, expect_dest);
+        assert_cloned_repo_dir(url, dest.path(), &expect_repo_dir);
     }
 
-    /// Dummy repo init. Copied from git2::test.
-    pub fn repo_init(dest: &Path) -> Repository {
-        let mut opts = git2::RepositoryInitOptions::new();
-        opts.initial_head("main");
-        let repo = Repository::init_opts(dest, &opts).unwrap();
-        {
-            let mut config = repo.config().unwrap();
-            config.set_str("user.name", "name").unwrap();
-            config.set_str("user.email", "email").unwrap();
-            let mut index = repo.index().unwrap();
-            let id = index.write_tree().unwrap();
+    #[test]
+    fn test_clone_local_repo() {
+        let src = "tests/mdbook-dummy";
+        let dest = TempDir::new().unwrap();
+        let expect_repo_dir = dest.path().join(src);
 
-            let tree = repo.find_tree(id).unwrap();
-            let sig = repo.signature().unwrap();
-            repo.commit(Some("HEAD"), &sig, &sig, "initial\n\nbody", &tree, &[])
-                .unwrap();
+        assert_cloned_repo_dir(src, dest.path(), &expect_repo_dir);
+    }
+
+    fn assert_cloned_repo_dir(src: &str, dest: &Path, expect_repo_dir: &Path) {
+        struct RepoTest;
+        impl GitOp for RepoTest {
+            fn open(_path: PathBuf) -> Result<Repository, git2::Error> {
+                Err(git2::Error::from_str("YOU SHALL NOT OPEN"))
+            }
+            fn clone(_url: &str, _into: PathBuf) -> Result<Repository, git2::Error> {
+                crate::tests::repo_init(&_into)
+            }
         }
-        repo
+        let (got_dest, _sha, _date) = RepoTest::clone_or_fetch_repo(src, dest).unwrap();
+        assert_eq!(got_dest, expect_repo_dir);
     }
 }
