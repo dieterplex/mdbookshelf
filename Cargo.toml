@@ -8,7 +8,7 @@ repository = "https://github.com/rams3s/mdbookshelf"
 keywords = ["epub", "ebook", "mdbook", "rustbook"]
 license = "MIT"
 readme = "README.md"
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 anyhow = { version = "1.0", features = ["backtrace"] }
@@ -19,7 +19,7 @@ env_logger = "0.10"
 git2 = "0.15"
 log = "0.4"
 mdbook = "0.4"
-mdbook-epub = { git = "https://github.com/dieterplex/mdbook-epub", rev = "81b1e718" }
+mdbook-epub = { git = "https://github.com/dieterplex/mdbook-epub", rev = "c9269632" }
 mockall_double = "0.3.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

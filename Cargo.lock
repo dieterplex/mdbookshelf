@@ -1170,9 +1170,8 @@ dependencies = [
 [[package]]
 name = "mdbook-epub"
 version = "0.4.25"
-source = "git+https://github.com/dieterplex/mdbook-epub?rev=81b1e718#81b1e7184b04a731623baf06bca06fee9d6b7ef2"
+source = "git+https://github.com/dieterplex/mdbook-epub?rev=c9269632#c9269632a4610bc272750922523ee0b815dccdc3"
 dependencies = [
- "anyhow",
  "clap",
  "env_logger",
  "epub-builder",
@@ -1182,6 +1181,7 @@ dependencies = [
  "mdbook",
  "mime_guess",
  "pulldown-cmark",
+ "sanitize-filename",
  "semver",
  "serde",
  "serde_derive",
@@ -1904,6 +1904,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "sanitize-filename"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08c502bdb638f1396509467cb0580ef3b29aa2a45c5d43e5d84928241280296c"
+dependencies = [
+ "lazy_static",
+ "regex",
 ]
 
 [[package]]
