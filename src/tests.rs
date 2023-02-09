@@ -20,8 +20,11 @@ fn test_run() {
     templates-dir = "tests/templates"
 
     [[book]]
+    title = "Hello Rust"
     repo-url = "{REPO_URL}"
     url = "https://rams3s.github.io/mdbook-dummy/index.html"
+    [book.env-var]
+    MDBOOK_PREPROCESSOR__X = ""
     "#
     ))
     .unwrap();
@@ -73,7 +76,14 @@ fn test_run() {
     ctx_book
         .expect()
         .once()
-        .return_once(move |_path, _vars, _dest| Ok(book_result));
+        .return_once(move |_path, vars, _dest| {
+            assert_eq!(vars.len(), 2);
+            assert_eq!(vars[0].0, "MDBOOK_PREPROCESSOR__X");
+            assert_eq!(vars[0].1, Some(String::from("\"\"")));
+            assert_eq!(vars[1].0, "MDBOOK_BOOK__TITLE");
+            assert_eq!(&vars[1].1, &book_result.0);
+            Ok(book_result)
+        });
 
     let got = super::run(&config).unwrap();
 

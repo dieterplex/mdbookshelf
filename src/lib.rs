@@ -10,7 +10,7 @@ use anyhow::{anyhow, Ok, Result};
 #[double]
 use book::Book;
 use chrono::Utc;
-use config::Config;
+use config::{BookRepoConfig, Config};
 use git::GitOp;
 #[double]
 use git::Repo;
@@ -21,6 +21,7 @@ use std::fs::File;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use tera::Context;
+use toml::Value;
 use walkdir::WalkDir;
 
 /// A manifest entry for the generated EPUB
@@ -58,7 +59,7 @@ pub fn run(config: &Config) -> Result<Manifest> {
     let working_dir = config.working_dir.as_ref().unwrap();
 
     check_or_create_dir(dest.as_path())?;
-    let entries = generate_books(&config.book_repo_configs, working_dir, dest)
+    let entries = generate(&config.book_repo_configs, working_dir, dest)
         .ok_or_else(|| anyhow!("Something bad happened."))?;
     let manifest = Manifest {
         entries,
@@ -83,7 +84,54 @@ fn check_or_create_dir(dest: &Path) -> io::Result<()> {
     }
 }
 
-fn generate_books(
+fn generate_book(
+    repo_config: &BookRepoConfig,
+    working_dir: &Path,
+    dest: &Path,
+) -> Option<ManifestEntry> {
+    trace!("{:#?}", repo_config);
+    let repo_url = repo_config.repo_url.to_owned();
+
+    let (mut repo_path, commit_sha, last_modified) =
+        Repo::clone_or_fetch_repo(repo_url.as_str(), working_dir).ok()?;
+
+    if let Some(repo_folder) = &repo_config.folder {
+        repo_path = repo_path.join(repo_folder);
+    }
+
+    let mut vars: Vec<(String, Option<String>)> = if let Some(mapping) = &repo_config.env_var {
+        let to_owned_kv = |(k, v): (&String, &Value)| (k.to_owned(), Some(v.to_string()));
+        mapping.iter().map(to_owned_kv).collect()
+    } else {
+        Vec::new()
+    };
+    if let Some(new_filename) = &repo_config.title {
+        vars.push((
+            String::from("MDBOOK_BOOK__TITLE"),
+            Some(new_filename.to_owned()),
+        ));
+    }
+    let (book_title, path, epub_size) =
+        Book::generate_epub(repo_path.as_path(), vars, dest).ok()?;
+
+    let title = repo_config
+        .title
+        .to_owned()
+        .or(book_title)
+        .unwrap_or_default();
+
+    Some(ManifestEntry {
+        commit_sha,
+        epub_size,
+        last_modified,
+        path,
+        repo_url,
+        title,
+        url: repo_config.url.to_owned(),
+    })
+}
+
+fn generate(
     book_repo_configs: &Vec<config::BookRepoConfig>,
     working_dir: &Path,
     dest: &Path,
@@ -94,46 +142,7 @@ fn generate_books(
     }
     let mut shelf = Vec::with_capacity(book_repo_configs.len());
     for repo_config in book_repo_configs {
-        trace!("{:#?}", repo_config);
-        let repo_url = repo_config.repo_url.to_owned();
-
-        let (mut repo_path, commit_sha, last_modified) =
-            Repo::clone_or_fetch_repo(repo_url.as_str(), working_dir).ok()?;
-
-        if let Some(repo_folder) = &repo_config.folder {
-            repo_path = repo_path.join(repo_folder);
-        }
-
-        let mut vars: Vec<(String, Option<String>)> = if let Some(mapping) = &repo_config.env_var {
-            let to_owned_kv = |(k, v): (&String, &toml::Value)| (k.to_owned(), Some(v.to_string()));
-            mapping.iter().map(to_owned_kv).collect()
-        } else {
-            Vec::new()
-        };
-        if let Some(new_filename) = &repo_config.title {
-            vars.push((
-                String::from("MDBOOK_BOOK__TITLE"),
-                Some(new_filename.to_owned()),
-            ));
-        }
-        let (book_title, path, epub_size) =
-            Book::generate_epub(repo_path.as_path(), vars, dest).ok()?;
-        let title = repo_config
-            .title
-            .to_owned()
-            .or(book_title)
-            .unwrap_or_default();
-
-        let entry = ManifestEntry {
-            commit_sha,
-            epub_size,
-            last_modified,
-            path,
-            repo_url,
-            title,
-            url: repo_config.url.to_owned(),
-        };
-
+        let entry = generate_book(repo_config, working_dir, dest)?;
         shelf.push(entry);
     }
     Some(shelf)
