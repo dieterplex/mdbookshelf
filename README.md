@@ -1,11 +1,11 @@
  # MDBookshelf
 
-[![Build Status](https://travis-ci.org/rams3s/mdbookshelf.svg?branch=master)](https://travis-ci.org/rams3s/mdbookshelf)
+[![Build Status](https://github.com/dieterplex/mdbookshelf/workflows/Tests/badge.svg?branch=main)](https://github.com/dieterplex/mdbookshelf/actions?workflow=Tests)
 
-A Rust library/application to render a collection of books to EPUB using [mdbook-epub](https://github.com/Michael-F-Bryan/mdbook-epub).
+A Rust library/application to render a collection of books to EPUB using [forked mdbook-epub](https://github.com/dieterplex/mdbook-epub).
 It uses [Tera](https://github.com/Keats/tera) template engine to render an optional template.
 
-Used to generate the [Rust eBookshelf](https://rams3s.github.io/rust-ebookshelf) nightly.
+Used to generate the [Rust eBookshelf](https://dieterplex.github.io/rust-ebookshelf) nightly.
 
 ## Configuration
 
@@ -57,6 +57,7 @@ The options can be used to override values specified in `bookshelf.toml`.
 
 # Recent Changes
 
+- 0.2.0 Forked with custom epub-builder & mdbook-epub
 - 0.1.1 Updated README
 - 0.1.0 First release
 
