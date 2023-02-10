@@ -172,7 +172,7 @@ jobs:
           tar -C "target/${IMAGE_BINARY_TARGET}/release" \
             -xvf "target/${IMAGE_BINARY_TARGET}/release/${PROJ_NAME}-${IMAGE_BINARY_TARGET}.tar.gz"
           echo "::endgroup::"
-          
+
           echo "::group::Determine image tag"
           tag=""
           if [[ "${GITHUB_REF}" == *"refs/tags"* ]]; then
@@ -180,10 +180,10 @@ jobs:
           else
             tag="${IMAGE_REGISTRY}/${IMAGE_NAME}:${GITHUB_REF/refs\/heads\//}"
           fi
-          
+
           echo "[INFO] tag is: '${tag}'"
           echo "::endgroup::"
-          
+
           echo "::group::Container preflight"
           # if the image can be pulled, we do not need to build it
           # usually, container images in this scope should be small enough for this
@@ -193,7 +193,7 @@ jobs:
             exit 0
           fi
           echo "::endgroup::"
-          
+
           echo "::group::Container build"
           docker build \
             --tag "${tag}" \
@@ -202,7 +202,7 @@ jobs:
             --file "${GITHUB_WORKSPACE}/Dockerfile" \
             "${GITHUB_WORKSPACE}"
           echo "::endgroup::"
-          
+
           echo "::group::Container push"
           docker push "${tag}"
           echo "::endgroup::"

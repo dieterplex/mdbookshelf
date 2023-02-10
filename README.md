@@ -1,4 +1,4 @@
- # MDBookshelf
+# MDBookshelf
 
 [![Build Status](https://github.com/dieterplex/mdbookshelf/workflows/Tests/badge.svg?branch=main)](https://github.com/dieterplex/mdbookshelf/actions?workflow=Tests)
 
@@ -37,7 +37,6 @@ url = "https://github.com/rust-lang-nursery/rust-cookbook"
 mdBook build-in preprocessors is enabled tranparently and is affected by book.yaml per Book if there is any.
 If you want to filter with custom preprocessors, using book.env-var, like the conf above, to specify special [enviroment variables](https://rust-lang.github.io/mdBook/format/configuration/environment-variables.html) that could be accepted by mdBook.
 And don't forget to install preprocessors before building your bookshelf, or it would just generate books without these preprocessors.
-
 
 ## Usage
 
