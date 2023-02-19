@@ -16,7 +16,7 @@ use git::GitOp;
 use git::Repo;
 use log::{debug, info, trace, warn};
 use mockall_double::double;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -25,7 +25,7 @@ use toml::Value;
 use walkdir::WalkDir;
 
 /// A manifest entry for the generated EPUB
-#[derive(Default, Debug, PartialEq, Serialize)]
+#[derive(Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ManifestEntry {
     /// The commit sha
     pub commit_sha: String,
@@ -45,7 +45,7 @@ pub struct ManifestEntry {
 
 /// A Manifest contains the information about all EPUBs built
 /// during one invocation of `mdbookshelf.run()`.
-#[derive(Default, Debug, Serialize)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Manifest {
     pub entries: Vec<ManifestEntry>,
     pub timestamp: String,
@@ -136,11 +136,12 @@ fn generate(
     working_dir: &Path,
     dest: &Path,
 ) -> Option<Vec<ManifestEntry>> {
-    if book_repo_configs.is_empty() {
+    let mut shelf = if book_repo_configs.is_empty() {
         warn!("No book to generate");
-        return None;
-    }
-    let mut shelf = Vec::with_capacity(book_repo_configs.len());
+        Vec::new()
+    } else {
+        Vec::with_capacity(book_repo_configs.len())
+    };
     for repo_config in book_repo_configs {
         let entry = generate_book(repo_config, working_dir, dest)?;
         shelf.push(entry);
@@ -171,7 +172,8 @@ fn render_template(templates_dir: &Path, dest: &Path, manifest: &Manifest) -> Re
 
         let ctx = Context::from_serialize(manifest)?;
         let page = tera.render(template_path, &ctx).expect("Template error");
-        let mut f = File::create(&output_path).expect("Could not create file");
+        let mut f = File::create(&output_path)
+            .unwrap_or_else(|_| panic!("Could not create file {output_path:?} to render"));
 
         f.write_all(page.as_bytes())
             .expect("Error while writing file");
