@@ -1,20 +1,13 @@
 use std::path::PathBuf;
 use std::process;
 
-use clap::{crate_version, Arg, ArgAction, Command};
-use env_logger::Env;
+use clap::{crate_version, Arg, ArgAction, ArgMatches, Command};
+use env_logger::{Builder, Env};
 use log::{error, info};
 use mdbookshelf::config::Config;
 
-/// `mdbookshelf` binary reads config from `bookshelf.toml` file and allows
-/// overwriting some of the value using command line arguments.
-///
-/// Run `mdbookshelf --help` for documentation.
-fn main() {
-    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
-    color_backtrace::install();
-
-    let matches = Command::new("mdbookshelf")
+fn cmd() -> Command {
+    Command::new("mdbookshelf")
         .about("Executes mdbook-epub on a collection of repositories")
         .version(concat!("v", crate_version!()))
         .author("Ramses Ladlani <rladlani@gmail.com>")
@@ -42,8 +35,9 @@ fn main() {
                 .help("Sets the templates directory (if not set, will generate manifest.json)")
                 .action(ArgAction::Set),
         )
-        .get_matches();
+}
 
+fn cfg(matches: ArgMatches) -> Config {
     // :TODO: add argument to set config path (bookshelf.toml)
 
     let config_location = std::env::current_dir()
@@ -89,12 +83,27 @@ fn main() {
         Some(templates_dir) => info!("Using templates in {}", templates_dir.display()),
         None => info!("No templates dir provided"),
     }
+    config
+}
 
-    if let Err(e) = mdbookshelf::run(&config) {
+fn run(config: Config) -> anyhow::Result<mdbookshelf::Manifest> {
+    mdbookshelf::run(&config).map_err(|e| {
         error!("Application error {:?}", e.backtrace());
         e.chain().for_each(|c| error!("  caused by: {}", c));
-        process::exit(1);
-    }
+        e
+    })
+}
+
+/// `mdbookshelf` binary reads config from `bookshelf.toml` file and allows
+/// overwriting some of the value using command line arguments.
+///
+/// Run `mdbookshelf --help` for documentation.
+fn main() {
+    Builder::from_env(Env::default().default_filter_or("info")).init();
+    color_backtrace::install();
+    if run(cfg(cmd().get_matches())).is_err() {
+        process::exit(1)
+    };
 }
 
 #[cfg(test)]
