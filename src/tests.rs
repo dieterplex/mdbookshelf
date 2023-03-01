@@ -23,6 +23,7 @@ fn test_run() {
     title = "Hello Rust"
     repo-url = "{REPO_URL}"
     url = "https://rams3s.github.io/mdbook-dummy/index.html"
+    folder = "book"
     [book.env-var]
     MDBOOK_PREPROCESSOR__X = ""
     "#
@@ -101,9 +102,16 @@ fn test_run() {
 }
 
 /// Dummy repo init. Copied from git2::test.
-pub fn repo_init(dest: &Path) -> Result<Repository, git2::Error> {
-    let mut opts = git2::RepositoryInitOptions::new();
-    opts.initial_head("main");
+pub(crate) fn repo_init(dest: &Path) -> Result<Repository, git2::Error> {
+    repo_init_opts(dest, git2::RepositoryInitOptions::new())
+}
+
+pub(crate) fn repo_init_opts(
+    dest: &Path,
+    opts: git2::RepositoryInitOptions,
+) -> Result<Repository, git2::Error> {
+    let mut opts = opts;
+    _ = &opts.initial_head("main");
     let repo = Repository::init_opts(dest, &opts)?;
     {
         let mut config = repo.config()?;

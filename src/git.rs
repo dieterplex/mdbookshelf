@@ -76,7 +76,29 @@ mod tests {
     use std::path::{Path, PathBuf};
     use tempfile::TempDir;
 
-    use super::GitOp;
+    use crate::{git::GitOp, tests::repo_init_opts};
+
+    #[test]
+    fn test_open_repo() {
+        let url = "https://github.com/rams3s/mdbook-dummy.git";
+        let parsed_url = url::Url::parse(url).unwrap().path()[1..].to_owned();
+        let dest = TempDir::new().unwrap();
+        let expect_repo_dir = dest.path().join(parsed_url);
+        struct RepoTest;
+        impl GitOp for RepoTest {
+            fn open(_path: PathBuf) -> Result<Repository, git2::Error> {
+                let mut opts = git2::RepositoryInitOptions::new();
+                opts.origin_url("https://github.com/rams3s/mdbook-dummy.git");
+                repo_init_opts(&_path, opts)
+            }
+            fn clone(_url: &str, _into: PathBuf) -> Result<Repository, git2::Error> {
+                unreachable!()
+            }
+        }
+
+        let (got_dest, _, _) = RepoTest::clone_or_fetch_repo(url, dest.path()).unwrap();
+        assert_eq!(got_dest, expect_repo_dir);
+    }
 
     #[test]
     fn test_clone_remote_repo() {
