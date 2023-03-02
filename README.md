@@ -53,6 +53,7 @@ OPTIONS:
     -t, --templates_dir <TEMPLATES_DIR>        Sets the templates directory  (if not set, will generate manifest.json)
     -w, --working_dir <WORKING_DIR>            Sets a custom working directory where the book repositories will be
                                                cloned
+    -c, --config <CONFIG_PATH>                 Sets the path of configuration file
 ```
 
 The options can be used to override values specified in `bookshelf.toml`.

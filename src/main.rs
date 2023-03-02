@@ -1,10 +1,11 @@
 use std::path::PathBuf;
 use std::process;
 
-use clap::{crate_version, Arg, ArgAction, ArgMatches, Command};
+use anyhow::{bail, Result};
+use clap::{crate_version, value_parser, Arg, ArgMatches, Command};
 use env_logger::{Builder, Env};
 use log::{error, info};
-use mdbookshelf::config::Config;
+use mdbookshelf::{config::Config, Manifest};
 
 fn cmd() -> Command {
     Command::new("mdbookshelf")
@@ -17,7 +18,7 @@ fn cmd() -> Command {
                 .long("working_dir")
                 .value_name("WORKING_DIR")
                 .help("Sets a custom working directory where the book repositories will be cloned")
-                .action(ArgAction::Set),
+                .value_parser(value_parser!(PathBuf)),
         )
         .arg(
             Arg::new("destination_dir")
@@ -25,7 +26,7 @@ fn cmd() -> Command {
                 .long("destination_dir")
                 .value_name("DESTINATION_DIR")
                 .help("Sets the destination directory")
-                .action(ArgAction::Set),
+                .value_parser(value_parser!(PathBuf)),
         )
         .arg(
             Arg::new("templates_dir")
@@ -33,60 +34,84 @@ fn cmd() -> Command {
                 .long("templates_dir")
                 .value_name("TEMPLATES_DIR")
                 .help("Sets the templates directory (if not set, will generate manifest.json)")
-                .action(ArgAction::Set),
+                .value_parser(value_parser!(PathBuf)),
+        )
+        .arg(
+            Arg::new("config")
+                .short('c')
+                .long("config")
+                .value_name("CONFIG_PATH")
+                .help("Sets the path of the bookshelf.toml config file")
+                .value_parser(value_parser!(PathBuf)),
         )
 }
 
-fn cfg(matches: ArgMatches) -> Config {
-    // :TODO: add argument to set config path (bookshelf.toml)
-
-    let config_location = std::env::current_dir()
-        .unwrap_or(PathBuf::from("."))
-        .join("bookshelf.toml");
-    let mut config = if config_location.exists() {
-        info!("Loading config from {}", config_location.display());
-        Config::from_disk(&config_location).unwrap_or_default()
-    } else {
-        Config::default()
+fn cfg(matches: ArgMatches) -> Result<Config> {
+    // Base directory for destination/book_repos/templates
+    let mut base = std::env::current_dir().unwrap_or(PathBuf::from("."));
+    let confpath = match matches.get_one::<PathBuf>("config").cloned() {
+        // Resolve to the parent dir of bookshelf.toml
+        Some(conf) if conf.is_file() => {
+            base = conf.parent().unwrap_or(base.as_path()).to_path_buf();
+            conf
+        }
+        // Resolve to current dir
+        Some(_) | None => base.join("bookshelf.toml"),
     };
+    info!("Loading config from {}", confpath.display());
+    let mut config = Config::from_disk(confpath).unwrap_or_default();
 
-    if let Some(destination_dir) = matches.get_one::<String>("destination_dir") {
-        config.destination_dir = Some(destination_dir.into());
+    if let Some(destination_dir) = matches.get_one::<PathBuf>("destination_dir") {
+        let dir = if destination_dir.is_absolute() {
+            destination_dir.into()
+        } else {
+            base.join(destination_dir)
+        };
+        config.destination_dir = Some(dir);
     }
 
-    assert!(
-        config.destination_dir.is_some(),
-        "Destination dir must be set in toml file or through command line"
-    );
-
-    info!(
-        "Running mdbookshelf with destination {}",
-        config.destination_dir.as_ref().unwrap().display()
-    );
-
-    if let Some(working_dir) = matches.get_one::<String>("working_dir") {
-        config.working_dir = Some(working_dir.into());
+    if config.destination_dir.is_none() {
+        bail!("Destination dir must be set in toml file or through command line");
+    } else {
+        info!(
+            "Running mdbookshelf with destination {}",
+            config.destination_dir.as_ref().unwrap().display()
+        );
     }
 
-    config.working_dir = config.working_dir.or_else(|| Some(PathBuf::from("repos")));
+    if let Some(working_dir) = matches.get_one::<PathBuf>("working_dir") {
+        let dir = if working_dir.is_absolute() {
+            working_dir.into()
+        } else {
+            base.join(working_dir)
+        };
+        config.working_dir = Some(dir);
+    }
+
+    config.working_dir = config.working_dir.or_else(|| Some(base.join("repos")));
 
     info!(
         "Will Clone repositories to {}",
         config.working_dir.as_ref().unwrap().display()
     );
 
-    if let Some(templates_dir) = matches.get_one::<String>("templates_dir") {
-        config.templates_dir = Some(templates_dir.into());
+    if let Some(templates_dir) = matches.get_one::<PathBuf>("templates_dir") {
+        let dir = if templates_dir.is_absolute() {
+            templates_dir.into()
+        } else {
+            base.join(templates_dir)
+        };
+        config.templates_dir = Some(dir);
     }
 
     match config.templates_dir.as_ref() {
         Some(templates_dir) => info!("Using templates in {}", templates_dir.display()),
         None => info!("No templates dir provided"),
     }
-    config
+    Ok(config)
 }
 
-fn run(config: Config) -> anyhow::Result<mdbookshelf::Manifest> {
+fn run(config: Config) -> Result<Manifest> {
     mdbookshelf::run(&config).map_err(|e| {
         error!("Application error {:?}", e.backtrace());
         e.chain().for_each(|c| error!("  caused by: {}", c));
@@ -101,7 +126,7 @@ fn run(config: Config) -> anyhow::Result<mdbookshelf::Manifest> {
 fn main() {
     Builder::from_env(Env::default().default_filter_or("info")).init();
     color_backtrace::install();
-    if run(cfg(cmd().get_matches())).is_err() {
+    if run(cfg(cmd().get_matches()).unwrap()).is_err() {
         process::exit(1)
     };
 }
@@ -185,7 +210,7 @@ mod tests {
         let dest = tempfile::tempdir()?;
         let curr_dir = env::current_dir()?;
         let file_path = dest.path().join("bookshelf.toml");
-        let mut file = File::create(&file_path)?;
+        let mut file = File::create(file_path)?;
         let cfg = format!(
             r#"{}
 destination-dir = "."
@@ -218,7 +243,7 @@ templates-dir = "{}"
     fn test_config_only_title_and_book() -> Result<(), Box<dyn Error>> {
         let dest = tempfile::tempdir()?;
         let file_path = dest.path().join("bookshelf.toml");
-        let mut file = File::create(&file_path)?;
+        let mut file = File::create(file_path)?;
         writeln!(file, "{}{}", CONFIG_TITLE, CONFIG_BOOK)?;
         let curr_dir = env::current_dir()?;
 
@@ -244,27 +269,64 @@ templates-dir = "{}"
     }
 
     #[test]
-    fn test_config_fromdisk() -> Result<(), Box<dyn Error>> {
-        let dest = tempfile::tempdir()?;
-        let dest_str = dest.path().as_os_str().to_string_lossy();
-
-        let curr_dir = env::current_dir()?;
-        let file_path = curr_dir.join("bookshelf.toml");
-        let mut file = File::create(&file_path)?;
+    fn test_config_override_from_disk() -> Result<(), Box<dyn Error>> {
+        let dir = tempfile::tempdir()?;
+        let config_path = dir.path().join("bookshelf.toml");
         const NOSUCHREPOCONF: &str = r#"
-        destination-dir = "."
-        working-dir = "repos"
-        [[book]]
-        repo-url = "https://github.com/mdbookepub/nosuch.git"
-        url = "https://mdbookepub.github.io/nosuch/""#;
-        writeln!(file, "{NOSUCHREPOCONF}")?;
+            destination-dir = "."
+            working-dir = "repos"
+            [[book]]
+            repo-url = "https://github.com/mdbookepub/nosuch.git"
+            url = "https://mdbookepub.github.io/nosuch/""#;
+        _ = File::create(&config_path)?.write_all(NOSUCHREPOCONF.as_bytes());
+        let config_path_str = config_path.as_os_str().to_string_lossy();
 
-        let args = vec!["mdbookshelf", "-d", &dest_str, "-w", "src"];
+        let args = vec![
+            "mdbookshelf",
+            "-d",
+            "dest",
+            "-w",
+            "src",
+            "-c",
+            &config_path_str,
+        ];
         let arg_matches = super::cmd().get_matches_from(args);
-        let config = super::cfg(arg_matches);
-        assert_eq!(config.working_dir.unwrap(), std::path::PathBuf::from("src"));
+        let config = super::cfg(arg_matches).unwrap();
+        assert_eq!(config.destination_dir.unwrap(), dir.path().join("dest"));
+        assert_eq!(config.working_dir.unwrap(), dir.path().join("src"));
+        Ok(())
+    }
 
-        fs::remove_file(file_path)?;
+    #[test]
+    fn test_absolute_path_options() -> Result<(), Box<dyn Error>> {
+        let conf_dir = tempfile::tempdir()?;
+        let conf_path = conf_dir.path().join("bookshelf.toml");
+        let mut file = File::create(&conf_path)?;
+        writeln!(file, "{}{}", CONFIG_TITLE, CONFIG_BOOK)?;
+        let dest_dir = tempfile::tempdir()?;
+        let tpl_dir = tempfile::tempdir()?;
+        let repos_dir = tempfile::tempdir()?;
+        let c = &conf_path.as_os_str().to_string_lossy();
+        let d = &dest_dir.path().as_os_str().to_string_lossy();
+        let t = &tpl_dir.path().as_os_str().to_string_lossy();
+        let w = &repos_dir.path().as_os_str().to_string_lossy();
+
+        let args = vec![
+            "mdbookshelf",
+            "--working_dir",
+            w,
+            "--destination_dir",
+            d,
+            "--templates_dir",
+            t,
+            "--config",
+            c,
+        ];
+        let arg_matches = super::cmd().get_matches_from(args);
+        let config = super::cfg(arg_matches).unwrap();
+
+        assert_eq!(config.destination_dir.unwrap(), dest_dir.path());
+        assert_eq!(config.working_dir.unwrap(), repos_dir.path());
         Ok(())
     }
 
