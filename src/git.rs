@@ -43,15 +43,15 @@ pub(crate) trait GitOp {
         }
 
         let repo = if let Ok(repo) = Self::open(dest.clone()) {
-            repo.find_remote("origin").and_then(|mut remote| {
-                assert_eq!(
-                    remote.url().unwrap(),
-                    url,
+            {
+                let mut remote = repo.find_remote("origin")?;
+                anyhow::ensure!(
+                    remote.url().unwrap().eq(url),
                     "Remote url for origin and requested url do not match"
                 );
                 info!("Found {:?}. Fetching {}", &dest, url);
-                remote.fetch(&["master"], None, None)
-            })?;
+                remote.fetch(&["master", "main"], None, None)?;
+            }
             repo
         } else {
             // :TODO: shallow clone when supported by libgit2 (https://github.com/libgit2/libgit2/issues/3058)
