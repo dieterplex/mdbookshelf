@@ -66,6 +66,7 @@ The options can be used to override values specified in `bookshelf.toml`.
 
 # Recent Changes
 
+- 0.4.0 Add option to specify bookshelf.toml and bug fixes
 - 0.3.0 Support custom book preprocessing
 - 0.2.0 Forked with custom epub-builder & mdbook-epub
 - 0.1.1 Updated README
