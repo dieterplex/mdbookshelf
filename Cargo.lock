@@ -1181,9 +1181,9 @@ dependencies = [
 
 [[package]]
 name = "mdbook"
-version = "0.4.25"
+version = "0.4.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d1ed28d5903dde77bd5182645078a37ee57014cac6ccb2d54e1d6496386648e4"
+checksum = "764dcbfc2e5f868bc1b566eb179dff1a06458fd0cff846aae2579392dd3f01a0"
 dependencies = [
  "ammonia",
  "anyhow",
@@ -1215,8 +1215,8 @@ dependencies = [
 
 [[package]]
 name = "mdbook-epub"
-version = "0.4.25"
-source = "git+https://github.com/dieterplex/mdbook-epub?rev=c9269632#c9269632a4610bc272750922523ee0b815dccdc3"
+version = "0.4.28"
+source = "git+https://github.com/dieterplex/mdbook-epub?rev=3bf63cf9#3bf63cf97385e4242616c92b45c329ef09bc85b0"
 dependencies = [
  "clap",
  "env_logger",
