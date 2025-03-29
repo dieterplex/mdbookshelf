@@ -95,7 +95,10 @@ fn test_run() {
         url: config.book_repo_configs[0].url.to_owned(),
         repo_url: config.book_repo_configs[0].repo_url.to_owned(),
         commit_sha: sha_cell.lock().unwrap().to_string(),
-        last_modified: Utc.timestamp(*sec_cell.lock().unwrap(), 0).to_rfc3339(),
+        last_modified: Utc
+            .timestamp_opt(*sec_cell.lock().unwrap(), 0)
+            .unwrap()
+            .to_rfc3339(),
     };
     assert_eq!(got.entries[0], entry);
     assert_eq!(got.title, config.title);

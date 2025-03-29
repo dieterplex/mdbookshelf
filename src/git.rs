@@ -7,6 +7,7 @@ use log::{info, trace};
 use mockall::automock;
 use url::Url;
 
+#[allow(dead_code)]
 pub(crate) struct Repo;
 
 #[cfg_attr(test, automock)]
@@ -60,8 +61,9 @@ pub(crate) trait GitOp {
         };
 
         let commit = repo.head()?.peel_to_commit()?;
+        let commit_seconds = commit.time().seconds();
         let commit_sha = commit.id().to_string();
-        let last_modified = Utc.timestamp(commit.time().seconds(), 0).to_rfc3339();
+        let last_modified = Utc.timestamp_opt(commit_seconds, 0).unwrap().to_rfc3339();
 
         Ok((dest, commit_sha, last_modified))
     }

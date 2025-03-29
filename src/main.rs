@@ -112,10 +112,8 @@ fn cfg(matches: ArgMatches) -> Result<Config> {
 }
 
 fn run(config: Config) -> Result<Manifest> {
-    mdbookshelf::run(&config).map_err(|e| {
+    mdbookshelf::run(&config).inspect_err(|e| {
         error!("Application error {:?}", e.backtrace());
-        e.chain().for_each(|c| error!("  caused by: {}", c));
-        e
     })
 }
 
