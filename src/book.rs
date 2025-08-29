@@ -12,6 +12,7 @@ impl BookOp {
     pub(crate) fn load(book_root: &Path) -> Result<mdbook::MDBook> {
         mdbook::MDBook::load(book_root)
     }
+    #[allow(clippy::result_large_err)]
     pub(crate) fn epub_generate(md: &MDBook, dest: &Path) -> Result<(), mdbook_epub::Error> {
         mdbook_epub::generate_with_preprocessor(md, dest)
     }

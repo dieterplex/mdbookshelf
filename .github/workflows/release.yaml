@@ -68,8 +68,12 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - name: Install OpenSSL via Homebrew (if needed)
+        if: matrix.target == 'x86_64-apple-darwin'
+        run: brew install openssl@3
+
       - name: Build Binary
-        run: cargo build --verbose --locked --release --target ${{ matrix.target }}
+        run: cargo build --locked --release --target ${{ matrix.target }}
  
       - name: Compress
         run: |
